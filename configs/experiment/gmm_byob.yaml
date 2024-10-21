@@ -8,9 +8,12 @@
 defaults:
   - override /energy: gmm
   - override /model/noise_schedule: geometric
+  - override /model: byob
 
-  
-tags: ["GMM", "iDEM"]
+trainer:
+  check_val_every_n_epoch: 1
+
+tags: ["GMM", "BYOB"]
 
 seed: 12345
 
@@ -23,15 +26,15 @@ model:
   noise_schedule:
     _target_: dem.models.components.noise_schedules.GeometricNoiseSchedule
     sigma_min: 0.00001
-    sigma_max: 1.0
-
-  buffer:
-    prioritize: false
+    sigma_max: 25
 
   partial_prior:
-    _target_: dem.energies.base_prior.Prior
+    _target_: dem.energies.base_prior.Uniform
     _partial_: true
     dim: 2
+    low: -50.0
+    high: 50.0
+    n_particles: 1
 
   clipper:
     _target_: dem.models.components.clipper.Clipper
@@ -50,9 +53,13 @@ model:
 
   diffusion_scale: 1.0
 
+  num_init_samples: 1000
   num_estimator_mc_samples: 500
   num_samples_to_generate_per_epoch: 1000
+  num_samples_to_generate_for_eval: 1000
 
   # this has to be max 1000 since test_set is 1000
   eval_batch_size: 1000
   scheduler: null
+  true_score_only: true
+  intermediate_steps: 20

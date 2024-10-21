@@ -35,15 +35,17 @@ def negative_time_descent(x, energy_function, num_steps, dt=1e-4):
         samples.append(x)
     return torch.stack(samples)
 
+def ess(log_w):
+    w = torch.exp(log_w)
+    return torch.sum(w)**2 / torch.sum(w ** 2)
+
 
 def euler_maruyama_step(
-    sde: VEReverseSDE, t: torch.Tensor, x: torch.Tensor, dt: float, diffusion_scale=1.0
-):
-    # Calculate drift and diffusion terms
+    sde: VEReverseSDE, t: torch.Tensor, x: torch.Tensor, dt: float, diffusion_scale: float=1.0): 
     drift = sde.f(t, x) * dt
     diffusion = diffusion_scale * sde.g(t, x) * np.sqrt(dt) * torch.randn_like(x)
 
-    # Update the state
+    # Update the state    
     x_next = x + drift + diffusion
     return x_next, drift
 
@@ -80,6 +82,10 @@ def integrate_sde(
     time_range=1.0,
     negative_time=False,
     num_negative_time_steps=100,
+    return_time=False,
+    sequential=False,
+    beta_function=None,
+    intermediate_steps=1
 ):
     start_time = time_range if reverse_time else 0.0
     end_time = time_range - start_time
@@ -91,9 +97,17 @@ def integrate_sde(
 
     with conditional_no_grad(no_grad):
         for t in times:
-            x, f = euler_maruyama_step(
-                sde, t, x, time_range / num_integration_steps, diffusion_scale
-            )
+            beta_t=beta_function(t)
+            if len(t.shape) >1:
+                t = t.squeeze()
+            if sequential:
+                log_w = energy_function(x)*beta_t
+                if ess(log_w)<len(x)*0.6:
+                    # resample with replacement
+                    x = x[torch.multinomial(torch.exp(log_w),len(x),replacement=True)] 
+            for _ in range(intermediate_steps):
+                x, f = euler_maruyama_step(
+                    sde, t, x, time_range / num_integration_steps, diffusion_scale)
             if energy_function.is_molecule:
                 x = remove_mean(x, energy_function.n_particles, energy_function.n_spatial_dim)
             samples.append(x)
@@ -106,4 +120,6 @@ def integrate_sde(
         )
         samples = torch.concatenate((samples, samples_langevin), axis=0)
 
+    if return_time:
+        return samples, times
     return samples

@@ -56,3 +56,14 @@ def estimate_grad_Rt(
     vmapped_fxn = torch.vmap(grad_fxn, in_dims=(0, 0, None, None, None), randomness="different")
 
     return vmapped_fxn(t, x, energy_function, noise_schedule, num_mc_samples)
+
+def simple_score_estimator(
+    t: torch.Tensor,
+    x: torch.Tensor,
+    energy_function: BaseEnergyFunction,
+    noise_schedule: BaseNoiseSchedule,
+    num_mc_samples: int,
+):
+    energy=energy_function(x)
+    grad=torch.autograd.grad(energy.sum(),x)[0]
+    return grad

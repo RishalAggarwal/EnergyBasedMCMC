@@ -1,7 +1,9 @@
 import math
-from typing import Dict
+from typing import Dict,List,Union
+from omegaconf import ListConfig
 
 import torch
+
 from torch.distributions import constraints
 
 
@@ -54,3 +56,33 @@ class MeanFreePrior(torch.distributions.Distribution):
         samples = samples.reshape(-1, self.n_particles, self.spatial_dim)
         samples = samples - samples.mean(-2, keepdims=True)
         return samples.reshape(-1, self.n_particles * self.spatial_dim)
+
+class Uniform(Prior):
+    
+    def __init__(self, low: Union[float, List[float]], high: Union[float, List[float]],dim,n_particles,device='cpu'):
+        super().__init__(dim=dim,scale=high-low,device=device)
+        self.dim = dim
+        self.n_particles = n_particles
+        low_is_list = isinstance(low, list) or isinstance(low, ListConfig)
+        high_is_list = isinstance(high, list) or isinstance(high, ListConfig)
+        self.low = torch.tensor(low) if low_is_list else torch.tensor([low] * self.n_particles*self.dim)
+        self.high = torch.tensor(high) if high_is_list else torch.tensor([high] *self.n_particles* self.dim)
+        assert self.low.shape == self.high.shape == (self.dim,)
+        assert torch.all(self.low < self.high)
+        self.low = self.low.to(device)
+        self.high = self.high.to(device)
+        self.dist = torch.distributions.Uniform(self.low, self.high)
+        self.device = device
+
+    def sample(self, n_samples: int, device: str = "cpu"):
+        samples = self.dist.sample((n_samples,))
+        samples = samples.reshape(-1,self.n_particles* self.dim)
+        if self.n_particles > 1:
+            samples = samples.reshape(-1, self.n_particles, self.dim)         
+        return samples
+
+    def log_prob(self, x: torch.Tensor):
+        # TODO: fix control flow for batched inputs
+        samples = x.reshape(-1, self.n_particles* self.dim)
+        log_probs = self.dist.log_prob(samples)
+        return log_probs
